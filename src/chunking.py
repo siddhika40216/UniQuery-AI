@@ -1,79 +1,101 @@
 
-from pathlib import Path
-import re
 import json
+import re
+from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-INPUT_FOLDER = PROJECT_ROOT / "data" / "extracted"
-OUTPUT_FOLDER = PROJECT_ROOT / "data" / "chunks"
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-CHUNK_SIZE = 500
-CHUNK_OVERLAP = 100
+INPUT_DIR = BASE_DIR / "data" / "extracted"
+OUTPUT_DIR = BASE_DIR / "data" / "chunks"
+OUTPUT_FILE = OUTPUT_DIR / "chunks.json"
+
+# Course codes such as GEOG 203L, STAT 101, HSC 324
+COURSE_PATTERN = re.compile(
+    r"(?m)^[ \t]*([A-Z]{2,}\s+\d{3}[A-Z]?)\s+(.+?)\s*$"
+)
+
+PAGE_PATTERN = re.compile(r"--- Page (\d+) ---")
 
 
-def split_into_chunks(text, source, page_number):
-    words = text.split()
-    chunks = []
-
-    start = 0
-
-    while start < len(words):
-        end = min(start + CHUNK_SIZE, len(words))
-        chunk_text = " ".join(words[start:end])
-
-        if chunk_text.strip():
-            chunks.append({
-                "source": source,
-                "page": page_number,
-                "text": chunk_text
-            })
-
-        if end == len(words):
-            break
-
-        start = end - CHUNK_OVERLAP
-
-    return chunks
+def clean_text(text):
+    text = text.replace("\ufeff", " ")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def main():
-    OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     all_chunks = []
 
-    text_files = list(INPUT_FOLDER.glob("*.txt"))
+    for file_path in INPUT_DIR.glob("*.txt"):
+        text = file_path.read_text(encoding="utf-8", errors="replace")
 
-    if not text_files:
-        print("No extracted text files found.")
-        return
+        # Split the extracted document into physical PDF pages.
+        page_parts = PAGE_PATTERN.split(text)
 
-    for text_file in text_files:
-        content = text_file.read_text(encoding="utf-8")
-        pages = re.split(r"--- Page (\d+) ---", content)
+        for i in range(1, len(page_parts), 2):
+            page_number = int(page_parts[i])
+            page_text = page_parts[i + 1]
 
-        for index in range(1, len(pages), 2):
-            page_number = int(pages[index])
-            page_text = pages[index + 1].strip()
+            matches = list(COURSE_PATTERN.finditer(page_text))
 
-            if page_text:
-                all_chunks.extend(
-                    split_into_chunks(
-                        page_text,
-                        text_file.name,
-                        page_number
-                    )
+            for j, match in enumerate(matches):
+                start = match.start()
+                end = (
+                    matches[j + 1].start()
+                    if j + 1 < len(matches)
+                    else len(page_text)
                 )
 
-    output_path = OUTPUT_FOLDER / "chunks.json"
+                course_text = clean_text(page_text[start:end])
 
-    with output_path.open("w", encoding="utf-8") as file:
-        json.dump(all_chunks, file, ensure_ascii=False, indent=2)
+                code = re.sub(r"\s+", " ", match.group(1)).strip()
+                title = match.group(2).strip()
 
-    print(f"Pages processed into chunks: {len(all_chunks)}")
-    print(f"Chunks saved to: {output_path}")
+                # Ignore incomplete or very short records.
+                if len(course_text) < 80:
+                    continue
 
-    if all_chunks:
-        print("\nSample chunk:")
-        print(all_chunks[0]["text"][:350])
+                all_chunks.append({
+                    "course_code": code,
+                    "course_title": title,
+                    "source": file_path.name,
+                    "page": page_number,
+                    "text": course_text
+                })
+
+    # Remove exact duplicate course records from repeated syllabus sections.
+    unique_chunks = []
+    seen = set()
+
+    for chunk in all_chunks:
+        key = (
+            chunk["course_code"].upper(),
+            re.sub(r"\s+", " ", chunk["text"]).strip().lower()
+        )
+
+        if key not in seen:
+            seen.add(key)
+            unique_chunks.append(chunk)
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as file:
+        json.dump(unique_chunks, file, ensure_ascii=False, indent=2)
+
+    print("Course records created:", len(unique_chunks))
+    print("Saved to:", OUTPUT_FILE)
+
+    matches = [
+        chunk for chunk in unique_chunks
+        if chunk["course_code"].upper() == "GEOG 203L"
+    ]
+
+    print("\nGEOG 203L records after deduplication:", len(matches))
+
+    for chunk in matches[:2]:
+        print("\nCourse:", chunk["course_code"], chunk["course_title"])
+        print("PDF page:", chunk["page"])
+        print(chunk["text"][:1200])
 
 
 if __name__ == "__main__":
