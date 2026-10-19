@@ -72,7 +72,7 @@ def search(query, model, index, chunks, top_k=5):
         print(f"Result {rank} | Similarity: {score:.3f}")
         print(f"Source: {chunk['source']}")
         print(f"Page: {chunk['page']}")
-        print(f"Text: {chunk['text'][:500]}")
+        print(f"Text: {chunk['text'][:1500]}")
         print("-" * 60)
 
 
