@@ -265,19 +265,33 @@
                 const data = await response.json();
 
                 botMessage.textContent = data.answer;
+                
+if (data.sources && data.sources.length > 0) {
+    const sourceBox = document.createElement("div");
+    sourceBox.style.marginTop = "14px";
+    sourceBox.style.paddingTop = "10px";
+    sourceBox.style.borderTop = "1px solid #e8e9ef";
 
-                if (data.sources && data.sources.length > 0) {
-                    const sourceText = data.sources.map(source =>
-                        `${source.file} — PDF page ${source.page}`
-                    ).join("\n");
+    const sourceHeading = document.createElement("strong");
+    sourceHeading.textContent = "Sources";
+    sourceHeading.style.fontSize = "13px";
+    sourceBox.appendChild(sourceHeading);
 
-                    const sources = document.createElement("p");
-                    sources.style.fontSize = "12px";
-                    sources.style.color = "#73788a";
-                    sources.style.marginTop = "12px";
-                    sources.textContent = "Sources:\n" + sourceText;
-                    botMessage.appendChild(sources);
-                }
+    data.sources.forEach(function (source) {
+        const sourceItem = document.createElement("div");
+        sourceItem.style.fontSize = "12px";
+        sourceItem.style.color = "#73788a";
+        sourceItem.style.marginTop = "6px";
+        sourceItem.textContent =
+            source.file + " · PDF page " + source.page;
+
+        sourceBox.appendChild(sourceItem);
+    });
+
+    botMessage.appendChild(sourceBox);
+}
+
+
             } catch (error) {
                 botMessage.textContent =
                     "Could not connect to UniQuery AI. Please check that the backend is running.";
