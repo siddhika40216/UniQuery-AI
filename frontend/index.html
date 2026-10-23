@@ -1,0 +1,294 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniQuery AI</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f5f6fa;
+            color: #202433;
+        }
+
+        .app {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #20243a;
+            color: white;
+            padding: 28px 20px;
+        }
+
+        .brand {
+            font-size: 23px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .sidebar p {
+            color: #c2c6d8;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .topbar {
+            background: white;
+            padding: 22px 30px;
+            border-bottom: 1px solid #e8e9ef;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .chat {
+            flex: 1;
+            width: 100%;
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 35px 25px;
+        }
+
+        .welcome {
+            margin: 55px 0 30px;
+            text-align: center;
+        }
+
+        .welcome h1 {
+            font-size: 32px;
+            margin-bottom: 12px;
+        }
+
+        .welcome p {
+            color: #73788a;
+            line-height: 1.6;
+        }
+
+        .message {
+            padding: 15px 18px;
+            border-radius: 12px;
+            margin: 15px 0;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .user {
+            background: #e5e9ff;
+            margin-left: 50px;
+        }
+
+        .bot {
+            background: white;
+            border: 1px solid #e8e9ef;
+            margin-right: 50px;
+        }
+
+        .input-area {
+            padding: 20px 25px 25px;
+            background: white;
+            border-top: 1px solid #e8e9ef;
+        }
+
+        .input-box {
+            display: flex;
+            gap: 10px;
+            max-width: 850px;
+            margin: 0 auto;
+        }
+
+        input {
+            flex: 1;
+            min-width: 0;
+            padding: 15px;
+            border: 1px solid #d9dce6;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #626de0;
+        }
+
+        button {
+            padding: 0 22px;
+            border: none;
+            border-radius: 10px;
+            background: #555fd1;
+            color: white;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #434dbb;
+        }
+
+        .note {
+            text-align: center;
+            color: #85899a;
+            font-size: 12px;
+            margin: 12px 0 0;
+        }
+
+        @media (max-width: 650px) {
+            .sidebar {
+                display: none;
+            }
+
+            .topbar {
+                padding: 18px;
+            }
+
+            .chat {
+                padding: 20px 15px;
+            }
+
+            .welcome h1 {
+                font-size: 26px;
+            }
+
+            .user {
+                margin-left: 15px;
+            }
+
+            .bot {
+                margin-right: 15px;
+            }
+
+            .input-area {
+                padding: 15px;
+            }
+
+            button {
+                padding: 0 15px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+
+        <aside class="sidebar">
+            <div class="brand">UniQuery AI</div>
+            <p>Your university information assistant.</p>
+            <hr>
+            <p>Ask questions about courses, learning outcomes and university documents.</p>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">University Assistant</header>
+
+            <section class="chat" id="chat">
+                <div class="welcome" id="welcome">
+                    <h1>What would you like to know?</h1>
+                    <p>Ask a question about your university courses and documents.</p>
+                </div>
+            </section>
+
+            <footer class="input-area">
+                <form class="input-box" id="chatForm">
+                    <input
+                        type="text"
+                        id="question"
+                        placeholder="Ask UniQuery AI a question..."
+                        autocomplete="off"
+                        required
+                    >
+                    <button type="submit">Send</button>
+                </form>
+                <p class="note">UniQuery AI · Answers based on university documents</p>
+            </footer>
+        </main>
+
+    </div>
+
+   <script>
+        const form = document.getElementById("chatForm");
+        const input = document.getElementById("question");
+        const chat = document.getElementById("chat");
+        const welcome = document.getElementById("welcome");
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            const question = input.value.trim();
+            if (!question) return;
+
+            welcome.style.display = "none";
+
+            const userMessage = document.createElement("div");
+            userMessage.className = "message user";
+            userMessage.textContent = question;
+            chat.appendChild(userMessage);
+
+            const botMessage = document.createElement("div");
+            botMessage.className = "message bot";
+            botMessage.textContent = "Thinking...";
+            chat.appendChild(botMessage);
+
+            input.value = "";
+            input.disabled = true;
+            form.querySelector("button").disabled = true;
+
+            try {
+                const response = await fetch("/chat", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ question: question })
+                });
+
+                if (!response.ok) {
+                    throw new Error("Server returned error " + response.status);
+                }
+
+                const data = await response.json();
+
+                botMessage.textContent = data.answer;
+
+                if (data.sources && data.sources.length > 0) {
+                    const sourceText = data.sources.map(source =>
+                        `${source.file} — PDF page ${source.page}`
+                    ).join("\n");
+
+                    const sources = document.createElement("p");
+                    sources.style.fontSize = "12px";
+                    sources.style.color = "#73788a";
+                    sources.style.marginTop = "12px";
+                    sources.textContent = "Sources:\n" + sourceText;
+                    botMessage.appendChild(sources);
+                }
+            } catch (error) {
+                botMessage.textContent =
+                    "Could not connect to UniQuery AI. Please check that the backend is running.";
+                console.error(error);
+            } finally {
+                input.disabled = false;
+                form.querySelector("button").disabled = false;
+                input.focus();
+                chat.scrollTop = chat.scrollHeight;
+            }
+        });
+</script>
+</body>
+</html>
