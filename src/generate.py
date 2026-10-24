@@ -7,6 +7,21 @@ MODEL_NAME = "llama3.2:3b"
 
 def generate_answer(question, context):
     prompt = f"""
+For questions asking "What are your views about [course]?",
+interpret the question as asking for an explanation or overview
+of the course based on the provided context.
+
+If the context contains relevant information about the course,
+summarize that information instead of saying it is unavailable.
+
+Only say "I could not find this information in the available
+university documents" when the context does not contain relevant
+information.
+
+Do not invent facts or claim to have personal opinions.
+
+Do not say the information is unavailable if the context contains a relevant course description.
+Do not invent personal opinions or facts that are not present in the context.
 You are UniQuery AI, a helpful university information assistant.
 
 Answer the user's question using ONLY the university document context below.
