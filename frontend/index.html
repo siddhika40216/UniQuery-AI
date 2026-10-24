@@ -25,6 +25,7 @@
 
         .sidebar {
             width: 250px;
+            flex-shrink: 0;
             background: #20243a;
             color: white;
             padding: 28px 20px;
@@ -42,11 +43,27 @@
             line-height: 1.6;
         }
 
+        .new-chat {
+            width: 100%;
+            padding: 12px;
+            margin: 18px 0 8px;
+            border: 1px solid #555d7b;
+            border-radius: 9px;
+            background: transparent;
+            color: white;
+            cursor: pointer;
+        }
+
+        .new-chat:hover {
+            background: #343a57;
+        }
+
         .main {
             flex: 1;
             display: flex;
             flex-direction: column;
             min-width: 0;
+            min-height: 100vh;
         }
 
         .topbar {
@@ -127,7 +144,7 @@
             border-color: #626de0;
         }
 
-        button {
+        .send-button {
             padding: 0 22px;
             border: none;
             border-radius: 10px;
@@ -137,8 +154,13 @@
             cursor: pointer;
         }
 
-        button:hover {
+        .send-button:hover {
             background: #434dbb;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
         .note {
@@ -177,7 +199,7 @@
                 padding: 15px;
             }
 
-            button {
+            .send-button {
                 padding: 0 15px;
             }
         }
@@ -190,8 +212,15 @@
         <aside class="sidebar">
             <div class="brand">UniQuery AI</div>
             <p>Your university information assistant.</p>
+
+            <button type="button" class="new-chat" id="newChat">
+                + New Chat
+            </button>
+
             <hr>
+
             <p>Ask questions about courses, learning outcomes and university documents.</p>
+            <p>Follow-up questions are supported within the current conversation.</p>
         </aside>
 
         <main class="main">
@@ -213,41 +242,89 @@
                         autocomplete="off"
                         required
                     >
-                    <button type="submit">Send</button>
+                    <button type="submit" class="send-button" id="sendButton">
+                        Send
+                    </button>
                 </form>
-                <p class="note">UniQuery AI · Answers based on university documents</p>
+
+                <p class="note">
+                    UniQuery AI · Answers based on university documents
+                </p>
             </footer>
         </main>
-
     </div>
 
-   <script>
+    <script>
         const form = document.getElementById("chatForm");
         const input = document.getElementById("question");
         const chat = document.getElementById("chat");
         const welcome = document.getElementById("welcome");
+        const newChatButton = document.getElementById("newChat");
+        const sendButton = document.getElementById("sendButton");
+
+        // Stores the conversation for follow-up questions.
+        let chatHistory = [];
+        let isSending = false;
+
+        function scrollToBottom() {
+            window.scrollTo({
+                top: document.body.scrollHeight,
+                behavior: "smooth"
+            });
+        }
+
+        function addMessage(role, content, sources = []) {
+            const message = document.createElement("div");
+            message.className = "message " + role;
+            message.textContent = content;
+
+            if (role === "bot" && sources.length > 0) {
+                const sourceBox = document.createElement("div");
+                sourceBox.style.marginTop = "14px";
+                sourceBox.style.paddingTop = "10px";
+                sourceBox.style.borderTop = "1px solid #e8e9ef";
+
+                const heading = document.createElement("strong");
+                heading.textContent = "Sources";
+                heading.style.fontSize = "13px";
+                sourceBox.appendChild(heading);
+
+                sources.forEach(function (source) {
+                    const sourceItem = document.createElement("div");
+                    sourceItem.style.fontSize = "12px";
+                    sourceItem.style.color = "#73788a";
+                    sourceItem.style.marginTop = "6px";
+                    sourceItem.textContent =
+                        source.file + " · PDF page " + source.page;
+
+                    sourceBox.appendChild(sourceItem);
+                });
+
+                message.appendChild(sourceBox);
+            }
+
+            chat.appendChild(message);
+            return message;
+        }
 
         form.addEventListener("submit", async function (event) {
             event.preventDefault();
 
+            if (isSending) return;
+
             const question = input.value.trim();
             if (!question) return;
 
+            isSending = true;
             welcome.style.display = "none";
 
-            const userMessage = document.createElement("div");
-            userMessage.className = "message user";
-            userMessage.textContent = question;
-            chat.appendChild(userMessage);
+            addMessage("user", question);
 
-            const botMessage = document.createElement("div");
-            botMessage.className = "message bot";
-            botMessage.textContent = "Thinking...";
-            chat.appendChild(botMessage);
+            const botMessage = addMessage("bot", "Thinking...");
 
             input.value = "";
             input.disabled = true;
-            form.querySelector("button").disabled = true;
+            sendButton.disabled = true;
 
             try {
                 const response = await fetch("/chat", {
@@ -255,54 +332,88 @@
                     headers: {
                         "Content-Type": "application/json"
                     },
-                    body: JSON.stringify({ question: question })
+                    body: JSON.stringify({
+                        question: question,
+                        history: chatHistory
+                    })
                 });
 
                 if (!response.ok) {
-                    throw new Error("Server returned error " + response.status);
+                    throw new Error(
+                        "Server returned error " + response.status
+                    );
                 }
 
                 const data = await response.json();
 
+                // Display answer and its sources.
                 botMessage.textContent = data.answer;
-                
-if (data.sources && data.sources.length > 0) {
-    const sourceBox = document.createElement("div");
-    sourceBox.style.marginTop = "14px";
-    sourceBox.style.paddingTop = "10px";
-    sourceBox.style.borderTop = "1px solid #e8e9ef";
 
-    const sourceHeading = document.createElement("strong");
-    sourceHeading.textContent = "Sources";
-    sourceHeading.style.fontSize = "13px";
-    sourceBox.appendChild(sourceHeading);
+                if (data.sources && data.sources.length > 0) {
+                    const sourceBox = document.createElement("div");
+                    sourceBox.style.marginTop = "14px";
+                    sourceBox.style.paddingTop = "10px";
+                    sourceBox.style.borderTop = "1px solid #e8e9ef";
 
-    data.sources.forEach(function (source) {
-        const sourceItem = document.createElement("div");
-        sourceItem.style.fontSize = "12px";
-        sourceItem.style.color = "#73788a";
-        sourceItem.style.marginTop = "6px";
-        sourceItem.textContent =
-            source.file + " · PDF page " + source.page;
+                    const heading = document.createElement("strong");
+                    heading.textContent = "Sources";
+                    heading.style.fontSize = "13px";
+                    sourceBox.appendChild(heading);
 
-        sourceBox.appendChild(sourceItem);
-    });
+                    data.sources.forEach(function (source) {
+                        const sourceItem = document.createElement("div");
+                        sourceItem.style.fontSize = "12px";
+                        sourceItem.style.color = "#73788a";
+                        sourceItem.style.marginTop = "6px";
+                        sourceItem.textContent =
+                            source.file + " · PDF page " + source.page;
 
-    botMessage.appendChild(sourceBox);
-}
+                        sourceBox.appendChild(sourceItem);
+                    });
 
+                    botMessage.appendChild(sourceBox);
+                }
+
+                // Save successful exchanges for future follow-ups.
+                chatHistory.push({
+                    role: "user",
+                    content: question
+                });
+
+                chatHistory.push({
+                    role: "assistant",
+                    content: data.answer
+                });
+
+                // Keep the most recent 12 messages.
+                chatHistory = chatHistory.slice(-12);
 
             } catch (error) {
                 botMessage.textContent =
                     "Could not connect to UniQuery AI. Please check that the backend is running.";
+
                 console.error(error);
+
             } finally {
+                isSending = false;
                 input.disabled = false;
-                form.querySelector("button").disabled = false;
+                sendButton.disabled = false;
                 input.focus();
-                chat.scrollTop = chat.scrollHeight;
+                scrollToBottom();
             }
         });
-</script>
+
+        // Start a fresh conversation.
+        newChatButton.addEventListener("click", function () {
+            if (isSending) return;
+
+            chatHistory = [];
+            chat.innerHTML = "";
+            chat.appendChild(welcome);
+            welcome.style.display = "block";
+            input.value = "";
+            input.focus();
+        });
+    </script>
 </body>
 </html>

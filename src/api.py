@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from typing import List, Literal
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -32,9 +33,15 @@ chunks = []
 embedding_model = None
 index = None
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
 
 class ChatRequest(BaseModel):
     question: str
+    history: List[ChatMessage] = []
+
 
 
 @app.on_event("startup")
@@ -193,7 +200,57 @@ def chat(request: ChatRequest):
             "sources": [],
         }
 
-    results = retrieve_context(question)
+    # Convert conversation history into dictionaries.
+    history = [
+        {
+            "role": message.role,
+            "content": message.content,
+        }
+        for message in request.history
+    ]
+
+    # Use the previous user question to identify the course
+    # when the current question is a follow-up.
+    retrieval_question = question
+
+    has_course_code = re.search(
+        r"\b[A-Z]{2,}\s+\d{3}[A-Z]?\b",
+        question,
+        re.IGNORECASE,
+    )
+
+    has_po_code = re.search(
+        r"\bPO\s*10\b",
+        question,
+        re.IGNORECASE,
+    )
+
+    if not has_course_code and not has_po_code:
+        for message in reversed(history):
+            if message["role"] != "user":
+                continue
+
+            previous_question = message["content"]
+
+            previous_has_course = re.search(
+                r"\b[A-Z]{2,}\s+\d{3}[A-Z]?\b",
+                previous_question,
+                re.IGNORECASE,
+            )
+
+            previous_has_po = re.search(
+                r"\bPO\s*10\b",
+                previous_question,
+                re.IGNORECASE,
+            )
+
+            if previous_has_course or previous_has_po:
+                retrieval_question = (
+                    previous_question + "\n" + question
+                )
+                break
+
+    results = retrieve_context(retrieval_question)
 
     if not results:
         return {
@@ -216,7 +273,13 @@ def chat(request: ChatRequest):
         )
 
     context = "\n\n---\n\n".join(context_parts)
-    answer = generate_answer(question, context)
+
+    # Pass history to the language model.
+    answer = generate_answer(
+        question,
+        context,
+        history=history,
+    )
 
     sources = [
         {
@@ -230,3 +293,4 @@ def chat(request: ChatRequest):
         "answer": answer,
         "sources": sources,
     }
+
