@@ -1,10 +1,10 @@
 
 from pathlib import Path
 import sys
+import re
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -15,7 +15,6 @@ from retrieve import load_chunks
 from generate import generate_answer
 from sentence_transformers import SentenceTransformer
 import faiss
-import re
 
 app = FastAPI(title="UniQuery AI")
 
@@ -51,7 +50,75 @@ def load_rag_system():
     index = faiss.read_index(str(INDEX_FILE))
 
 
+def retrieve_po_definitions(question):
+    extracted_file = (
+        PROJECT_ROOT
+        / "data"
+        / "extracted"
+        / "PO CO Undergraduate courses_bv.txt"
+    )
+
+    if not extracted_file.exists():
+        return []
+
+    text = extracted_file.read_text(encoding="utf-8")
+
+    pages = re.split(
+        r"---\s*Page\s+(\d+)\s*---",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    results = []
+
+    pattern = (
+        r"\bPO\s*10\s*:\s*"
+        r"Environment\s+and\s+sustainability\s*:?\s*"
+        r"(.*?)"
+        r"(?=\n\s*PO\s*\d+\s*:|\n\s*\n|$)"
+    )
+
+    for i in range(1, len(pages), 2):
+        page_number = pages[i]
+        page_text = pages[i + 1]
+
+        matches = re.finditer(
+            pattern,
+            page_text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        for match in matches:
+            definition = re.sub(
+                r"\s+",
+                " ",
+                match.group(1),
+            ).strip()
+
+            if definition:
+                results.append({
+                    "course_code": "PO10",
+                    "course_title": "Environment and sustainability",
+                    "source": "PO CO Undergraduate courses_bv.txt",
+                    "page": int(page_number),
+                    "text": (
+                        "PO10: Environment and sustainability: "
+                        + definition
+                    ),
+                })
+
+    return results
+
+
 def retrieve_context(question, top_k=3):
+    # First, check for PO10 questions.
+    if re.search(r"\bPO\s*10\b", question, re.IGNORECASE):
+        po_results = retrieve_po_definitions(question)
+
+        if po_results:
+            return po_results[:top_k]
+
+    # Next, check for an exact course code.
     code_match = re.search(
         r"\b([A-Z]{2,}\s+\d{3}[A-Z]?)\b",
         question,
@@ -60,13 +127,18 @@ def retrieve_context(question, top_k=3):
 
     if code_match:
         requested_code = re.sub(
-            r"\s+", " ", code_match.group(1)
+            r"\s+",
+            " ",
+            code_match.group(1),
         ).strip().upper()
 
         matching_chunks = [
-            chunk for chunk in chunks
+            chunk
+            for chunk in chunks
             if re.sub(
-                r"\s+", " ", chunk.get("course_code", "")
+                r"\s+",
+                " ",
+                chunk.get("course_code", ""),
             ).strip().upper() == requested_code
         ]
 
@@ -76,7 +148,9 @@ def retrieve_context(question, top_k=3):
 
             for chunk in matching_chunks:
                 text_key = re.sub(
-                    r"\s+", " ", chunk["text"]
+                    r"\s+",
+                    " ",
+                    chunk["text"],
                 ).strip().lower()
 
                 if text_key not in seen:
@@ -85,6 +159,7 @@ def retrieve_context(question, top_k=3):
 
             return unique_chunks[:top_k]
 
+    # Otherwise, use semantic search.
     question_embedding = embedding_model.encode(
         [question],
         convert_to_numpy=True,
@@ -113,7 +188,10 @@ def chat(request: ChatRequest):
     question = request.question.strip()
 
     if not question:
-        return {"answer": "Please enter a question.", "sources": []}
+        return {
+            "answer": "Please enter a question.",
+            "sources": [],
+        }
 
     results = retrieve_context(question)
 
@@ -148,4 +226,7 @@ def chat(request: ChatRequest):
         for chunk in results
     ]
 
-    return {"answer": answer, "sources": sources}
+    return {
+        "answer": answer,
+        "sources": sources,
+    }
